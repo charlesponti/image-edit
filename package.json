@@ -1,0 +1,19 @@
+{
+  "description": "Surgical image edits with a proof: a generative model re-renders the whole image, code pastes back only the masked region, and a pixel diff verifies that everything outside the mask is byte-identical to the original.",
+  "homepage": "https://github.com/charlesponti/image-edit",
+  "keywords": [
+    "image-editing",
+    "inpainting",
+    "compositing",
+    "opencv",
+    "generative-ai"
+  ],
+  "license": "MIT",
+  "name": "@pontistudios/image-edit",
+  "private": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/charlesponti/image-edit.git"
+  },
+  "version": "0.1.0"
+}

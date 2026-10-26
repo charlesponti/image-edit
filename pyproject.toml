@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pontistudios-image-edit"
+version = "0.1.0"
+description = "Surgical image edits with a proof: model re-render + masked paste-back + pixel-diff verification."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "numpy>=1.24",
+    "opencv-python-headless>=4.8",
+    "Pillow>=10",
+]
+
+[project.scripts]
+image-edit = "image_edit.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
