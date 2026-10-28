@@ -1,6 +1,8 @@
 # @pontistudios/image-edit
 
-**Surgical image edits with a proof.**
+**An image-editing suite with a proof habit: surgical edits of flat images, and reproducible builds from layers.**
+
+## Surgical edits (`composite` / `verify`)
 
 Every generative editor — ChatGPT's image edits, Gemini, the rest — re-renders the *whole* image when you ask for a small change. The vendor docs admit it: OpenAI's mask is "entirely prompt-based" guidance, Gemini's API has no mask parameter at all ("semantic masking" is a sentence in your prompt). Ask for a different coat colour and the face, the background and the typography all quietly drift. Measured on a real edit: **2,674,842 of 2,741,191 pixels outside the target region changed — 97.5% of everything you didn't ask about.**
 
@@ -53,6 +55,22 @@ A JSON verification report is printed (and saved with `--report`):
 
 The CLI exits non-zero when the guarantee fails.
 
+## Build from layers (`stack`)
+
+The dual of the surgical edit: when an image is *assembled* — artwork over a base, an occluder over a line, linework over both — don't flatten it and edit the flat file later. Keep the layers and rebuild:
+
+```bash
+image-edit stack --out banner.png --size 2560x1440 --bg 000000 \
+    bridge.png sil-left.png@200,430:620x620 sil-right.png@1740,430:620x620 \
+    lines-left.png@200,430:620x620 lines-right.png@1740,430:620x620
+```
+
+Layers composite in the order given (Porter-Duff "over"). Each layer spec is `path[@x,y][:WxH]`: an optional canvas offset and an optional resize. Order is the whole semantics — an opaque layer hides exactly what it covers, which is how the banner above removes the bridge's deck line from under the two hosts: a black silhouette layer sits between the bridge and their wireframe linework, so the line stops at each silhouette and resumes after it. No model, no mask, no redraw — and the build is reproducible from the layer files byte-for-byte (verified: a CLI rebuild of a script-built banner differed in 0 of 3,686,400 pixels).
+
+The command prints a build report (canvas, background, each layer's file/offset/size, and a re-read check that the saved file matches the verified array). Output is PNG-only, same masters rule as `composite`.
+
+Rule of thumb: if you own the layers, `stack`; if all you have is the flat image, `composite`.
+
 ## Case studies
 
 Two real productions, run before this code was packaged (same algorithms, now the CLI): [`examples/say-less.md`](examples/say-less.md) — a coat recolour via a luminance-traced mask, and a handbag moved to the other arm via a three-region diff mask. Both verified at 0 changed pixels outside the guard.
@@ -73,8 +91,8 @@ Synthetic suite: a hostile edit that randomises every pixel still cannot leak ou
 
 ```
 src/image_edit/
-    core.py    load / align / feathered paste-back / lossless save
+    core.py    load / align / feathered paste-back / layer stacking / lossless save
     masks.py   box union, dark-region tracing, change-diff masks, guard
     verify.py  the outside-the-mask guarantee check
-    cli.py     image-edit composite | verify
+    cli.py     image-edit composite | verify | stack
 ```

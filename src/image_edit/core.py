@@ -1,12 +1,19 @@
-"""Core compositing: load, align, paste back.
+"""Core compositing: load, align, paste back -- and stack.
 
-Everything here is deterministic NumPy/OpenCV. The single equation the
-whole package stands on:
+Everything here is deterministic NumPy/OpenCV/PIL. The single equation
+the paste-back half of the package stands on:
 
     out = original * (1 - alpha) + edit * alpha
 
 where alpha is the feathered mask. Where alpha == 0 the output IS the
 original, arithmetically -- that is the guarantee.
+
+The stack half is the dual operation: instead of rescuing a flat image
+from a model's re-render, build the image from its layers in the first
+place -- base first, then each RGBA layer composited over it in order
+(Porter-Duff "over"). Same arithmetic family, opposite direction:
+nothing generative is involved, so there is nothing to verify against;
+the layer files are the source of truth and the build is reproducible.
 """
 
 from __future__ import annotations
@@ -72,3 +79,50 @@ def paste_back(
     alpha = feather_alpha(mask, feather_sigma)
     out = original * (1.0 - alpha[..., None]) + edit * alpha[..., None]
     return np.round(out).astype(np.uint8)
+
+
+def load_layer(path: str) -> Image.Image:
+    """Load a layer as RGBA. Any source format is converted; the alpha
+    channel is the layer's shape -- where it is 0, layers below show
+    through unchanged."""
+    try:
+        return Image.open(path).convert("RGBA")
+    except FileNotFoundError:
+        raise
+    except Exception as exc:
+        raise FileNotFoundError(f"could not read layer: {path}") from exc
+
+
+def stack_layers(
+    canvas_size: tuple[int, int],
+    background: tuple[int, int, int, int],
+    layers: list[tuple[Image.Image, int, int]],
+) -> Image.Image:
+    """Composite RGBA layers onto a fresh canvas, in order.
+
+    `layers` is a list of (image, x, y): each image is alpha-composited
+    over everything below it at offset (x, y), clipped at the canvas
+    edges. Order is the whole semantics -- a later opaque layer hides
+    earlier ones exactly where it covers them (that is how an occluder
+    layer removes a line from under a subject without editing either).
+    """
+    canvas = Image.new("RGBA", canvas_size, background)
+    for image, x, y in layers:
+        # Clip the layer to the canvas rectangle before compositing;
+        # offsets may be negative or push the layer partly off-canvas.
+        src_x, src_y = max(0, -x), max(0, -y)
+        dst_x, dst_y = max(0, x), max(0, y)
+        w = min(image.width - src_x, canvas.width - dst_x)
+        h = min(image.height - src_y, canvas.height - dst_y)
+        if w <= 0 or h <= 0:
+            continue
+        region = image.crop((src_x, src_y, src_x + w, src_y + h))
+        canvas.alpha_composite(region, (dst_x, dst_y))
+    return canvas
+
+
+def save_png_pil(image: Image.Image, path: str) -> None:
+    """Save a PIL image losslessly as PNG (same masters rule as save_png)."""
+    if not path.lower().endswith(".png"):
+        raise ValueError("masters must be saved as .png (lossless)")
+    image.save(path, format="PNG")

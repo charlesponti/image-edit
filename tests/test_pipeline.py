@@ -13,7 +13,9 @@ import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from image_edit.core import paste_back
+from PIL import Image
+
+from image_edit.core import paste_back, stack_layers
 from image_edit.masks import mask_from_boxes, mask_from_dark_region, mask_from_diff
 from image_edit.verify import verify_outside
 
@@ -62,6 +64,43 @@ class TestGuarantee(unittest.TestCase):
         self.assertTrue((final[5:15, 5:15] == orig[5:15, 5:15]).all())
         # the intended change must be present
         self.assertTrue((final[65:75, 135:145] != orig[65:75, 135:145]).any())
+
+
+class TestStack(unittest.TestCase):
+    """Layered builds: order is the semantics, offsets are exact, and a
+    transparent pixel changes nothing below it."""
+
+    def test_later_opaque_layer_wins_where_it_covers(self):
+        base = Image.new("RGBA", (20, 20), (0, 0, 255, 255))  # blue
+        top = Image.new("RGBA", (8, 8), (255, 0, 0, 255))  # red
+        out = stack_layers((20, 20), (0, 0, 0, 255), [(base, 0, 0), (top, 4, 6)])
+        self.assertEqual(out.getpixel((5, 7)), (255, 0, 0, 255))  # covered -> red
+        self.assertEqual(out.getpixel((0, 0)), (0, 0, 255, 255))  # uncovered -> blue
+
+    def test_transparent_layer_is_a_no_op(self):
+        base = Image.new("RGBA", (10, 10), (10, 20, 30, 255))
+        ghost = Image.new("RGBA", (10, 10), (255, 255, 255, 0))
+        out = stack_layers((10, 10), (0, 0, 0, 255), [(base, 0, 0), (ghost, 0, 0)])
+        self.assertEqual(list(out.getdata()), list(base.getdata()))
+
+    def test_occluder_layer_hides_what_is_under_it(self):
+        # the banner case: a line layer, an opaque black silhouette over
+        # part of it, then detail -- the line survives only outside the
+        # silhouette.
+        line = Image.new("RGBA", (30, 10), (0, 0, 0, 255))
+        for x in range(30):
+            line.putpixel((x, 5), (255, 255, 255, 255))
+        occluder = Image.new("RGBA", (6, 10), (0, 0, 0, 255))
+        out = stack_layers((30, 10), (0, 0, 0, 255), [(line, 0, 0), (occluder, 12, 0)])
+        self.assertEqual(out.getpixel((5, 5)), (255, 255, 255, 255))  # line intact
+        self.assertEqual(out.getpixel((14, 5)), (0, 0, 0, 255))  # line occluded
+
+    def test_layer_clipped_at_canvas_edge(self):
+        base = Image.new("RGBA", (10, 10), (0, 0, 0, 255))
+        big = Image.new("RGBA", (10, 10), (0, 255, 0, 255))
+        out = stack_layers((10, 10), (0, 0, 0, 255), [(base, 0, 0), (big, -4, 8)])
+        self.assertEqual(out.getpixel((0, 9)), (0, 255, 0, 255))  # visible corner lands
+        self.assertEqual(out.getpixel((9, 0)), (0, 0, 0, 255))  # untouched stays base
 
 
 if __name__ == "__main__":

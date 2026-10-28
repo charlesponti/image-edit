@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pontistudios-image-edit"
-version = "0.1.0"
+version = "0.2.0"
 description = "Surgical image edits with a proof: model re-render + masked paste-back + pixel-diff verification."
 readme = "README.md"
 requires-python = ">=3.10"
